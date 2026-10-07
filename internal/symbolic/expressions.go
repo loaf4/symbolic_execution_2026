@@ -1,7 +1,10 @@
 // Package symbolic содержит конкретные реализации символьных выражений
 package symbolic
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // SymbolicExpression - базовый интерфейс для всех символьных выражений
 type SymbolicExpression interface {
@@ -101,28 +104,39 @@ type BinaryOperation struct {
 	Operator BinaryOperator
 }
 
-// TODO: Реализуйте следующие методы в рамках домашнего задания
-
 // NewBinaryOperation создаёт новую бинарную операцию
 func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *BinaryOperation {
-	// TODO: Реализовать
-	// Создать новую бинарную операцию и проверить совместимость типов
-	panic("не реализовано")
+	if left == nil || right == nil {
+		panic(fmt.Sprintf("binary operation %s: nil operand", op))
+	}
+	lt, rt := left.Type(), right.Type()
+	switch {
+	case op.IsArithmetic(), op.IsOrdering():
+		if lt != IntType || rt != IntType {
+			panic(fmt.Sprintf("binary operation %s: expected int operands, got %s and %s", op, lt, rt))
+		}
+	case op == EQ || op == NE:
+		if lt != rt || (lt != IntType && lt != BoolType) {
+			panic(fmt.Sprintf("binary operation %s: incompatible operand types %s and %s", op, lt, rt))
+		}
+	default:
+		panic(fmt.Sprintf("unknown binary operator %d", int(op)))
+	}
+	return &BinaryOperation{Left: left, Right: right, Operator: op}
 }
 
 // Type возвращает результирующий тип операции
 func (bo *BinaryOperation) Type() ExpressionType {
-	// TODO: Реализовать
-	// Определить результирующий тип на основе операции и типов операндов
-	// Например: int + int = int, int < int = bool
-	panic("не реализовано")
+	// int + int = int, int < int = bool
+	if bo.Operator.IsArithmetic() {
+		return IntType
+	}
+	return BoolType
 }
 
 // String возвращает строковое представление операции
 func (bo *BinaryOperation) String() string {
-	// TODO: Реализовать
-	// Формат: "(left operator right)"
-	panic("не реализовано")
+	return fmt.Sprintf("(%s %s %s)", bo.Left, bo.Operator, bo.Right)
 }
 
 // Accept реализует Visitor pattern
@@ -136,13 +150,33 @@ type LogicalOperation struct {
 	Operator LogicalOperator
 }
 
-// TODO: Реализуйте следующие методы в рамках домашнего задания
-
 // NewLogicalOperation создаёт новую логическую операцию
 func NewLogicalOperation(operands []SymbolicExpression, op LogicalOperator) *LogicalOperation {
-	// TODO: Реализовать
-	// Создать логическую операцию и проверить типы операндов
-	panic("не реализовано")
+	switch op {
+	case AND, OR:
+		if len(operands) == 0 {
+			panic(fmt.Sprintf("logical operation %s: expected at least 1 operand", op))
+		}
+	case NOT:
+		if len(operands) != 1 {
+			panic(fmt.Sprintf("logical operation %s: expected 1 operand, got %d", op, len(operands)))
+		}
+	case IMPLIES:
+		if len(operands) != 2 {
+			panic(fmt.Sprintf("logical operation %s: expected 2 operands, got %d", op, len(operands)))
+		}
+	default:
+		panic(fmt.Sprintf("unknown logical operator %d", int(op)))
+	}
+	for i, operand := range operands {
+		if operand == nil {
+			panic(fmt.Sprintf("logical operation %s: operand %d is nil", op, i))
+		}
+		if operand.Type() != BoolType {
+			panic(fmt.Sprintf("logical operation %s: operand %d has type %s, expected bool", op, i, operand.Type()))
+		}
+	}
+	return &LogicalOperation{Operands: append([]SymbolicExpression(nil), operands...), Operator: op}
 }
 
 // Type возвращает тип логической операции (всегда bool)
@@ -152,11 +186,15 @@ func (lo *LogicalOperation) Type() ExpressionType {
 
 // String возвращает строковое представление логической операции
 func (lo *LogicalOperation) String() string {
-	// TODO: Реализовать
 	// Для NOT: "!operand"
-	// Для AND/OR: "(operand1 && operand2 && ...)"
-	// Для IMPLIES: "(operand1 => operand2)"
-	panic("не реализовано")
+	if lo.Operator == NOT {
+		return "!" + lo.Operands[0].String()
+	}
+	parts := make([]string, len(lo.Operands))
+	for i, operand := range lo.Operands {
+		parts[i] = operand.String()
+	}
+	return "(" + strings.Join(parts, " "+lo.Operator.String()+" ") + ")"
 }
 
 // Accept реализует Visitor pattern
@@ -183,6 +221,18 @@ const (
 	GT // больше
 	GE // больше или равно
 )
+
+func (op BinaryOperator) IsArithmetic() bool {
+	return op >= ADD && op <= MOD
+}
+
+func (op BinaryOperator) IsOrdering() bool {
+	return op >= LT && op <= GE
+}
+
+func (op BinaryOperator) IsComparison() bool {
+	return op >= EQ && op <= GE
+}
 
 // String возвращает строковое представление оператора
 func (op BinaryOperator) String() string {
@@ -240,6 +290,82 @@ func (op LogicalOperator) String() string {
 	}
 }
 
+type UnaryOperation struct {
+	Operand  SymbolicExpression
+	Operator UnaryOperator
+}
+
+func NewUnaryOperation(operand SymbolicExpression, op UnaryOperator) *UnaryOperation {
+	if operand == nil {
+		panic(fmt.Sprintf("unary operation %s: nil operand", op))
+	}
+	if op != NEG {
+		panic(fmt.Sprintf("unknown unary operator %d", int(op)))
+	}
+	if operand.Type() != IntType {
+		panic(fmt.Sprintf("unary operation %s: expected int operand, got %s", op, operand.Type()))
+	}
+	return &UnaryOperation{Operand: operand, Operator: op}
+}
+
+func (uo *UnaryOperation) Type() ExpressionType {
+	return IntType
+}
+
+func (uo *UnaryOperation) String() string {
+	return fmt.Sprintf("(%s%s)", uo.Operator, uo.Operand)
+}
+
+func (uo *UnaryOperation) Accept(visitor Visitor) interface{} {
+	return visitor.VisitUnaryOperation(uo)
+}
+
+type UnaryOperator int
+
+const (
+	NEG UnaryOperator = iota // арифметическое отрицание
+)
+
+func (op UnaryOperator) String() string {
+	switch op {
+	case NEG:
+		return "-"
+	default:
+		return "unknown"
+	}
+}
+
+type ConditionalExpression struct {
+	Condition SymbolicExpression
+	Then      SymbolicExpression
+	Else      SymbolicExpression
+}
+
+func NewConditionalExpression(condition, thenExpr, elseExpr SymbolicExpression) *ConditionalExpression {
+	if condition == nil || thenExpr == nil || elseExpr == nil {
+		panic("conditional expression: nil operand")
+	}
+	if condition.Type() != BoolType {
+		panic(fmt.Sprintf("conditional expression: condition has type %s, expected bool", condition.Type()))
+	}
+	if thenExpr.Type() != elseExpr.Type() {
+		panic(fmt.Sprintf("conditional expression: branch types differ: %s and %s", thenExpr.Type(), elseExpr.Type()))
+	}
+	return &ConditionalExpression{Condition: condition, Then: thenExpr, Else: elseExpr}
+}
+
+func (ce *ConditionalExpression) Type() ExpressionType {
+	return ce.Then.Type()
+}
+
+func (ce *ConditionalExpression) String() string {
+	return fmt.Sprintf("(%s ? %s : %s)", ce.Condition, ce.Then, ce.Else)
+}
+
+func (ce *ConditionalExpression) Accept(visitor Visitor) interface{} {
+	return visitor.VisitConditionalExpression(ce)
+}
+
 type Ref struct {
 	// TODO: Выбрать и написать внутреннее представление символьной ссылки
 }
@@ -257,7 +383,5 @@ func (ref *Ref) Accept(visitor Visitor) interface{} {
 }
 
 // TODO: Добавьте дополнительные типы выражений по необходимости:
-// - UnaryOperation (унарные операции: -x, !x)
 // - ArrayAccess (доступ к элементам массива: arr[index])
 // - FunctionCall (вызовы функций: f(x, y))
-// - ConditionalExpression (тернарный оператор: condition ? true_expr : false_expr)

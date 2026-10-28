@@ -5,6 +5,7 @@ type Visitor interface {
 	VisitVariable(expr *SymbolicVariable) interface{}
 	VisitIntConstant(expr *IntConstant) interface{}
 	VisitBoolConstant(expr *BoolConstant) interface{}
+	VisitFloatConstant(expr *FloatConstant) interface{}
 	VisitBinaryOperation(expr *BinaryOperation) interface{}
 	VisitLogicalOperation(expr *LogicalOperation) interface{}
 	VisitUnaryOperation(expr *UnaryOperation) interface{}
@@ -36,6 +37,10 @@ func (vc *VariableCollector) VisitIntConstant(expr *IntConstant) interface{} {
 }
 
 func (vc *VariableCollector) VisitBoolConstant(expr *BoolConstant) interface{} {
+	return nil
+}
+
+func (vc *VariableCollector) VisitFloatConstant(expr *FloatConstant) interface{} {
 	return nil
 }
 

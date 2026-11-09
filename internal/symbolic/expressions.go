@@ -145,7 +145,7 @@ func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *Bina
 			panic(fmt.Sprintf("binary operation %s: expected int or float operands, got %s and %s", op, lt, rt))
 		}
 	case op == EQ || op == NE:
-		if lt != rt || (lt != IntType && lt != BoolType && lt != FloatType) {
+		if lt != rt || (lt != IntType && lt != BoolType && lt != FloatType && lt != RefType) {
 			panic(fmt.Sprintf("binary operation %s: incompatible operand types %s and %s", op, lt, rt))
 		}
 	default:
@@ -429,19 +429,119 @@ func (ce *ConditionalExpression) Accept(visitor Visitor) interface{} {
 }
 
 type Ref struct {
-	// TODO: Выбрать и написать внутреннее представление символьной ссылки
+	Address SymbolicExpression
+}
+
+func NewRef(address SymbolicExpression) *Ref {
+	if address == nil || (address.Type() != IntType && address.Type() != RefType) {
+		panic("ref: address must be an int expression")
+	}
+	return &Ref{Address: address}
+}
+
+func NewSymbolicRef(name string) *Ref {
+	return NewRef(NewSymbolicVariable(name, IntType))
 }
 
 func (ref *Ref) Type() ExpressionType {
-	panic("не реализовано")
+	return RefType
 }
 
 func (ref *Ref) String() string {
-	panic("не реализовано")
+	return "ref(" + ref.Address.String() + ")"
 }
 
 func (ref *Ref) Accept(visitor Visitor) interface{} {
-	panic("не реализовано")
+	return visitor.VisitRef(ref)
+}
+
+type SymbolicArray struct {
+	Name     string
+	ElemType ExpressionType
+}
+
+func NewSymbolicArray(name string, elemType ExpressionType) *SymbolicArray {
+	return &SymbolicArray{Name: name, ElemType: elemType}
+}
+
+func (sa *SymbolicArray) Type() ExpressionType {
+	return ArrayType
+}
+
+func (sa *SymbolicArray) String() string {
+	return sa.Name
+}
+
+func (sa *SymbolicArray) Accept(visitor Visitor) interface{} {
+	return visitor.VisitSymbolicArray(sa)
+}
+
+type ArrayStore struct {
+	Array SymbolicExpression
+	Index SymbolicExpression
+	Value SymbolicExpression
+}
+
+func NewArrayStore(array, index, value SymbolicExpression) *ArrayStore {
+	if array.Type() != ArrayType {
+		panic("array store: first argument must be an array")
+	}
+	if index.Type() != IntType && index.Type() != RefType {
+		panic("array store: index must be int")
+	}
+	if value.Type() != ElementType(array) {
+		panic(fmt.Sprintf("array store: expected value of type %s, got %s", ElementType(array), value.Type()))
+	}
+	return &ArrayStore{Array: array, Index: index, Value: value}
+}
+
+func (as *ArrayStore) Type() ExpressionType {
+	return ArrayType
+}
+
+func (as *ArrayStore) String() string {
+	return fmt.Sprintf("store(%s, %s, %s)", as.Array, as.Index, as.Value)
+}
+
+func (as *ArrayStore) Accept(visitor Visitor) interface{} {
+	return visitor.VisitArrayStore(as)
+}
+
+type ArraySelect struct {
+	Array SymbolicExpression
+	Index SymbolicExpression
+}
+
+func NewArraySelect(array, index SymbolicExpression) *ArraySelect {
+	if array.Type() != ArrayType {
+		panic("array select: first argument must be an array")
+	}
+	if index.Type() != IntType && index.Type() != RefType {
+		panic("array select: index must be int")
+	}
+	return &ArraySelect{Array: array, Index: index}
+}
+
+func (as *ArraySelect) Type() ExpressionType {
+	return ElementType(as.Array)
+}
+
+func (as *ArraySelect) String() string {
+	return fmt.Sprintf("select(%s, %s)", as.Array, as.Index)
+}
+
+func (as *ArraySelect) Accept(visitor Visitor) interface{} {
+	return visitor.VisitArraySelect(as)
+}
+
+func ElementType(array SymbolicExpression) ExpressionType {
+	switch a := array.(type) {
+	case *SymbolicArray:
+		return a.ElemType
+	case *ArrayStore:
+		return ElementType(a.Array)
+	}
+	panic("element type: not an array expression")
 }
 
 // TODO: Добавьте дополнительные типы выражений по необходимости:

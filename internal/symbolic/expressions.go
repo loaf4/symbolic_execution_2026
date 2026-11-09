@@ -97,6 +97,31 @@ func (bc *BoolConstant) Accept(visitor Visitor) interface{} {
 	return visitor.VisitBoolConstant(bc)
 }
 
+// FloatConstant представляет вещественную константу
+type FloatConstant struct {
+	Value float64
+}
+
+// NewFloatConstant создаёт новую вещественную константу
+func NewFloatConstant(value float64) *FloatConstant {
+	return &FloatConstant{Value: value}
+}
+
+// Type возвращает тип константы
+func (fc *FloatConstant) Type() ExpressionType {
+	return FloatType
+}
+
+// String возвращает строковое представление константы
+func (fc *FloatConstant) String() string {
+	return fmt.Sprintf("%g", fc.Value)
+}
+
+// Accept реализует Visitor pattern
+func (fc *FloatConstant) Accept(visitor Visitor) interface{} {
+	return visitor.VisitFloatConstant(fc)
+}
+
 // BinaryOperation представляет бинарную операцию
 type BinaryOperation struct {
 	Left     SymbolicExpression
@@ -111,12 +136,16 @@ func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *Bina
 	}
 	lt, rt := left.Type(), right.Type()
 	switch {
-	case op.IsArithmetic(), op.IsOrdering():
+	case op == MOD || op.IsBitwise():
 		if lt != IntType || rt != IntType {
 			panic(fmt.Sprintf("binary operation %s: expected int operands, got %s and %s", op, lt, rt))
 		}
+	case op.IsArithmetic(), op.IsOrdering():
+		if lt != rt || (lt != IntType && lt != FloatType) {
+			panic(fmt.Sprintf("binary operation %s: expected int or float operands, got %s and %s", op, lt, rt))
+		}
 	case op == EQ || op == NE:
-		if lt != rt || (lt != IntType && lt != BoolType) {
+		if lt != rt || (lt != IntType && lt != BoolType && lt != FloatType) {
 			panic(fmt.Sprintf("binary operation %s: incompatible operand types %s and %s", op, lt, rt))
 		}
 	default:
@@ -127,9 +156,9 @@ func NewBinaryOperation(left, right SymbolicExpression, op BinaryOperator) *Bina
 
 // Type возвращает результирующий тип операции
 func (bo *BinaryOperation) Type() ExpressionType {
-	// int + int = int, int < int = bool
-	if bo.Operator.IsArithmetic() {
-		return IntType
+	// int + int = int, float + float = float, int < int = bool
+	if bo.Operator.IsArithmetic() || bo.Operator.IsBitwise() {
+		return bo.Left.Type()
 	}
 	return BoolType
 }
@@ -220,6 +249,14 @@ const (
 	LE // меньше или равно
 	GT // больше
 	GE // больше или равно
+
+	// Битовые операторы
+	BIT_AND     // &
+	BIT_OR      // |
+	BIT_XOR     // ^
+	BIT_AND_NOT // &^
+	SHL         // <<
+	SHR         // >>
 )
 
 func (op BinaryOperator) IsArithmetic() bool {
@@ -228,6 +265,10 @@ func (op BinaryOperator) IsArithmetic() bool {
 
 func (op BinaryOperator) IsOrdering() bool {
 	return op >= LT && op <= GE
+}
+
+func (op BinaryOperator) IsBitwise() bool {
+	return op >= BIT_AND && op <= SHR
 }
 
 func (op BinaryOperator) IsComparison() bool {
@@ -259,6 +300,18 @@ func (op BinaryOperator) String() string {
 		return ">"
 	case GE:
 		return ">="
+	case BIT_AND:
+		return "&"
+	case BIT_OR:
+		return "|"
+	case BIT_XOR:
+		return "^"
+	case BIT_AND_NOT:
+		return "&^"
+	case SHL:
+		return "<<"
+	case SHR:
+		return ">>"
 	default:
 		return "unknown"
 	}
@@ -299,17 +352,23 @@ func NewUnaryOperation(operand SymbolicExpression, op UnaryOperator) *UnaryOpera
 	if operand == nil {
 		panic(fmt.Sprintf("unary operation %s: nil operand", op))
 	}
-	if op != NEG {
+	switch op {
+	case NEG:
+		if operand.Type() != IntType && operand.Type() != FloatType {
+			panic(fmt.Sprintf("unary operation %s: expected int or float operand, got %s", op, operand.Type()))
+		}
+	case BIT_NOT:
+		if operand.Type() != IntType {
+			panic(fmt.Sprintf("unary operation %s: expected int operand, got %s", op, operand.Type()))
+		}
+	default:
 		panic(fmt.Sprintf("unknown unary operator %d", int(op)))
-	}
-	if operand.Type() != IntType {
-		panic(fmt.Sprintf("unary operation %s: expected int operand, got %s", op, operand.Type()))
 	}
 	return &UnaryOperation{Operand: operand, Operator: op}
 }
 
 func (uo *UnaryOperation) Type() ExpressionType {
-	return IntType
+	return uo.Operand.Type()
 }
 
 func (uo *UnaryOperation) String() string {
@@ -323,13 +382,16 @@ func (uo *UnaryOperation) Accept(visitor Visitor) interface{} {
 type UnaryOperator int
 
 const (
-	NEG UnaryOperator = iota // арифметическое отрицание
+	NEG     UnaryOperator = iota // арифметическое отрицание
+	BIT_NOT                      // битовое отрицание ^x
 )
 
 func (op UnaryOperator) String() string {
 	switch op {
 	case NEG:
 		return "-"
+	case BIT_NOT:
+		return "^"
 	default:
 		return "unknown"
 	}

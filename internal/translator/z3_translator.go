@@ -90,10 +90,19 @@ func (zt *Z3Translator) VisitBoolConstant(expr *symbolic.BoolConstant) interface
 	return zt.ctx.FromBool(expr.Value)
 }
 
+// VisitFloatConstant транслирует вещественную константу в Z3
+func (zt *Z3Translator) VisitFloatConstant(expr *symbolic.FloatConstant) interface{} {
+	return zt.ctx.FromFloat64(expr.Value, zt.floatSort())
+}
+
 // VisitBinaryOperation транслирует бинарную операцию в Z3
 func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) interface{} {
 	left := expr.Left.Accept(zt)
 	right := expr.Right.Accept(zt)
+
+	if expr.Left.Type() == symbolic.FloatType {
+		return zt.translateFloatOperation(expr, zt.asFloat(left, expr), zt.asFloat(right, expr))
+	}
 
 	// equal is both for bool and int
 	if expr.Operator == symbolic.EQ || expr.Operator == symbolic.NE {
@@ -133,7 +142,49 @@ func (zt *Z3Translator) VisitBinaryOperation(expr *symbolic.BinaryOperation) int
 	case symbolic.GE:
 		return l.GE(r)
 	}
+
+	lb, rb := l.ToBV(64), r.ToBV(64)
+	switch expr.Operator {
+	case symbolic.BIT_AND:
+		return lb.And(rb).SToInt()
+	case symbolic.BIT_OR:
+		return lb.Or(rb).SToInt()
+	case symbolic.BIT_XOR:
+		return lb.Xor(rb).SToInt()
+	case symbolic.BIT_AND_NOT:
+		return lb.And(rb.Not()).SToInt()
+	case symbolic.SHL:
+		return lb.Lsh(rb).SToInt()
+	case symbolic.SHR:
+		return lb.SRsh(rb).SToInt()
+	}
 	panic(NewTranslationError(fmt.Sprintf("unsupported binary operator %s", expr.Operator), expr))
+}
+
+func (zt *Z3Translator) translateFloatOperation(expr *symbolic.BinaryOperation, l, r z3.Float) interface{} {
+	switch expr.Operator {
+	case symbolic.ADD:
+		return l.Add(r)
+	case symbolic.SUB:
+		return l.Sub(r)
+	case symbolic.MUL:
+		return l.Mul(r)
+	case symbolic.DIV:
+		return l.Div(r)
+	case symbolic.EQ:
+		return l.IEEEEq(r)
+	case symbolic.NE:
+		return l.IEEEEq(r).Not()
+	case symbolic.LT:
+		return l.LT(r)
+	case symbolic.LE:
+		return l.LE(r)
+	case symbolic.GT:
+		return l.GT(r)
+	case symbolic.GE:
+		return l.GE(r)
+	}
+	panic(NewTranslationError(fmt.Sprintf("unsupported float operator %s", expr.Operator), expr))
 }
 
 // VisitLogicalOperation транслирует логическую операцию в Z3
@@ -169,10 +220,20 @@ func (zt *Z3Translator) VisitLogicalOperation(expr *symbolic.LogicalOperation) i
 
 // VisitUnaryOperation транслирует унарную операцию в Z3
 func (zt *Z3Translator) VisitUnaryOperation(expr *symbolic.UnaryOperation) interface{} {
+	if expr.Operand.Type() == symbolic.FloatType {
+		operand := zt.asFloat(expr.Operand.Accept(zt), expr)
+		if expr.Operator == symbolic.NEG {
+			return operand.Neg()
+		}
+		panic(NewTranslationError(fmt.Sprintf("unsupported float unary operator %s", expr.Operator), expr))
+	}
+
 	operand := zt.asInt(expr.Operand.Accept(zt), expr)
 	switch expr.Operator {
 	case symbolic.NEG:
 		return operand.Neg()
+	case symbolic.BIT_NOT:
+		return operand.Neg().Sub(zt.intLit(1))
 	}
 	panic(NewTranslationError(fmt.Sprintf("unsupported unary operator %s", expr.Operator), expr))
 }
@@ -200,6 +261,8 @@ func (zt *Z3Translator) createZ3Variable(name string, exprType symbolic.Expressi
 		return zt.ctx.IntConst(name)
 	case symbolic.BoolType:
 		return zt.ctx.BoolConst(name)
+	case symbolic.FloatType:
+		return zt.ctx.Const(name, zt.floatSort())
 	}
 	return nil
 }
@@ -213,6 +276,10 @@ func (zt *Z3Translator) castToZ3Type(value interface{}, targetType symbolic.Expr
 		}
 	case symbolic.BoolType:
 		if v, ok := value.(z3.Bool); ok {
+			return v, nil
+		}
+	case symbolic.FloatType:
+		if v, ok := value.(z3.Float); ok {
 			return v, nil
 		}
 	default:
@@ -237,6 +304,19 @@ func (zt *Z3Translator) asBool(value interface{}, expr symbolic.SymbolicExpressi
 		panic(NewTranslationError(err.Error(), expr))
 	}
 	return v.(z3.Bool)
+}
+
+// asFloat приводит результат трансляции к z3.Float; expr используется для сообщения об ошибке
+func (zt *Z3Translator) asFloat(value interface{}, expr symbolic.SymbolicExpression) z3.Float {
+	v, err := zt.castToZ3Type(value, symbolic.FloatType)
+	if err != nil {
+		panic(NewTranslationError(err.Error(), expr))
+	}
+	return v.(z3.Float)
+}
+
+func (zt *Z3Translator) floatSort() z3.Sort {
+	return zt.ctx.FloatSort(11, 53)
 }
 
 // intLit создаёт целочисленную константу Z3

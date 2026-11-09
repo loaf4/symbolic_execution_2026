@@ -252,6 +252,55 @@ func (zt *Z3Translator) VisitConditionalExpression(expr *symbolic.ConditionalExp
 	return cond.IfThenElse(thenVal, elseVal)
 }
 
+// VisitRef транслирует ссылку в Z3
+func (zt *Z3Translator) VisitRef(expr *symbolic.Ref) interface{} {
+	return zt.asInt(expr.Address.Accept(zt), expr)
+}
+
+// VisitSymbolicArray транслирует символьный массив в Z3-массив int -> value
+func (zt *Z3Translator) VisitSymbolicArray(expr *symbolic.SymbolicArray) interface{} {
+	if v, exists := zt.vars[expr.Name]; exists {
+		if _, ok := v.(z3.Array); !ok {
+			panic(NewTranslationError(
+				fmt.Sprintf("variable %q is already declared with a different type", expr.Name), expr))
+		}
+		return v
+	}
+
+	var elemSort z3.Sort
+	switch expr.ElemType {
+	case symbolic.IntType, symbolic.RefType:
+		elemSort = zt.ctx.IntSort()
+	case symbolic.BoolType:
+		elemSort = zt.ctx.BoolSort()
+	case symbolic.FloatType:
+		elemSort = zt.floatSort()
+	default:
+		panic(NewTranslationError(fmt.Sprintf("unsupported array element type %s", expr.ElemType), expr))
+	}
+	v := zt.ctx.Const(expr.Name, zt.ctx.ArraySort(zt.ctx.IntSort(), elemSort))
+	zt.vars[expr.Name] = v
+	return v
+}
+
+// VisitArrayStore транслирует запись в массив
+func (zt *Z3Translator) VisitArrayStore(expr *symbolic.ArrayStore) interface{} {
+	array := zt.asArray(expr.Array.Accept(zt), expr)
+	index := zt.asInt(expr.Index.Accept(zt), expr)
+	value, ok := expr.Value.Accept(zt).(z3.Value)
+	if !ok {
+		panic(NewTranslationError("array store: bad value", expr))
+	}
+	return array.Store(index, value)
+}
+
+// VisitArraySelect транслирует чтение из массива
+func (zt *Z3Translator) VisitArraySelect(expr *symbolic.ArraySelect) interface{} {
+	array := zt.asArray(expr.Array.Accept(zt), expr)
+	index := zt.asInt(expr.Index.Accept(zt), expr)
+	return array.Select(index)
+}
+
 // Вспомогательные методы
 
 // createZ3Variable создаёт Z3 переменную соответствующего типа
@@ -270,7 +319,7 @@ func (zt *Z3Translator) createZ3Variable(name string, exprType symbolic.Expressi
 // castToZ3Type приводит значение к нужному Z3 типу
 func (zt *Z3Translator) castToZ3Type(value interface{}, targetType symbolic.ExpressionType) (z3.Value, error) {
 	switch targetType {
-	case symbolic.IntType:
+	case symbolic.IntType, symbolic.RefType:
 		if v, ok := value.(z3.Int); ok {
 			return v, nil
 		}
@@ -313,6 +362,15 @@ func (zt *Z3Translator) asFloat(value interface{}, expr symbolic.SymbolicExpress
 		panic(NewTranslationError(err.Error(), expr))
 	}
 	return v.(z3.Float)
+}
+
+// asArray приводит результат трансляции к z3.Array
+func (zt *Z3Translator) asArray(value interface{}, expr symbolic.SymbolicExpression) z3.Array {
+	v, ok := value.(z3.Array)
+	if !ok {
+		panic(NewTranslationError(fmt.Sprintf("expected Z3 array, got %T", value), expr))
+	}
+	return v
 }
 
 func (zt *Z3Translator) floatSort() z3.Sort {

@@ -10,6 +10,10 @@ type Visitor interface {
 	VisitLogicalOperation(expr *LogicalOperation) interface{}
 	VisitUnaryOperation(expr *UnaryOperation) interface{}
 	VisitConditionalExpression(expr *ConditionalExpression) interface{}
+	VisitRef(expr *Ref) interface{}
+	VisitSymbolicArray(expr *SymbolicArray) interface{}
+	VisitArrayStore(expr *ArrayStore) interface{}
+	VisitArraySelect(expr *ArraySelect) interface{}
 	// TODO: Добавьте методы для других типов выражений по мере необходимости
 }
 
@@ -66,5 +70,27 @@ func (vc *VariableCollector) VisitConditionalExpression(expr *ConditionalExpress
 	expr.Condition.Accept(vc)
 	expr.Then.Accept(vc)
 	expr.Else.Accept(vc)
+	return nil
+}
+
+func (vc *VariableCollector) VisitRef(expr *Ref) interface{} {
+	expr.Address.Accept(vc)
+	return nil
+}
+
+func (vc *VariableCollector) VisitSymbolicArray(expr *SymbolicArray) interface{} {
+	return nil
+}
+
+func (vc *VariableCollector) VisitArrayStore(expr *ArrayStore) interface{} {
+	expr.Array.Accept(vc)
+	expr.Index.Accept(vc)
+	expr.Value.Accept(vc)
+	return nil
+}
+
+func (vc *VariableCollector) VisitArraySelect(expr *ArraySelect) interface{} {
+	expr.Array.Accept(vc)
+	expr.Index.Accept(vc)
 	return nil
 }

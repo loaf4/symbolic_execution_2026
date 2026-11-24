@@ -9,6 +9,7 @@ const (
 	BoolType
 	ArrayType
 	FloatType
+	RefType
 	// Добавьте другие типы по необходимости
 )
 
@@ -23,6 +24,8 @@ func (et ExpressionType) String() string {
 		return "array"
 	case FloatType:
 		return "float"
+	case RefType:
+		return "ref"
 	default:
 		return "unknown"
 	}

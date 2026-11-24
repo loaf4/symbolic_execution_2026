@@ -70,19 +70,57 @@ func TestArray(t *testing.T) {
 	mem := NewSymbolicMemory()
 
 	array := mem.Allocate(symbolic.ArrayType)
-	mem.AssignToArray(array, 5, symbolic.NewIntConstant(10))
+	mem.AssignToArray(array, symbolic.NewIntConstant(5), symbolic.NewIntConstant(10))
 
-	fromArray := mem.GetFromArray(array, 5, symbolic.IntType)
+	fromArray := mem.GetFromArray(array, symbolic.NewIntConstant(5), symbolic.IntType)
 	if sat, _ := isSat(t, zt, ne(fromArray, symbolic.NewIntConstant(10))); sat {
 		t.Errorf("expected array[5] == 10, got %s", fromArray)
 	}
 
-	another := mem.GetFromArray(array, 10, symbolic.IntType)
+	another := mem.GetFromArray(array, symbolic.NewIntConstant(10), symbolic.IntType)
 	if sat, _ := isSat(t, zt, eq(another, symbolic.NewIntConstant(10))); !sat {
 		t.Error("array[10] can be 10")
 	}
 	if sat, _ := isSat(t, zt, ne(another, symbolic.NewIntConstant(10))); !sat {
 		t.Error("array[10] can be not 10")
+	}
+}
+
+func TestArraySymbolicIndex(t *testing.T) {
+	zt := translator.NewZ3Translator()
+	mem := NewSymbolicMemory()
+
+	array := mem.Allocate(symbolic.ArrayType)
+	i := symbolic.NewSymbolicVariable("i", symbolic.IntType)
+	j := symbolic.NewSymbolicVariable("j", symbolic.IntType)
+	mem.AssignToArray(array, i, symbolic.NewIntConstant(5))
+	mem.AssignToArray(array, j, symbolic.NewIntConstant(2))
+	cond := eq(mem.GetFromArray(array, i, symbolic.IntType), symbolic.NewIntConstant(2))
+
+	if sat, _ := isSat(t, zt, cond); !sat {
+		t.Fatal("expected arr[i] == 2 to be possible")
+	}
+	if sat, _ := isSat(t, zt, cond, ne(i, j)); sat {
+		t.Error("arr[i] == 2 must be impossible when i != j")
+	}
+}
+
+func TestArrayAliasing(t *testing.T) {
+	zt := translator.NewZ3Translator()
+	mem := NewSymbolicMemory()
+
+	a := symbolic.NewSymbolicRef("a")
+	b := symbolic.NewSymbolicRef("b")
+	zero := symbolic.NewIntConstant(0)
+	mem.AssignToArray(a, zero, symbolic.NewIntConstant(1))
+	mem.AssignToArray(b, zero, symbolic.NewIntConstant(2))
+	cond := eq(mem.GetFromArray(a, zero, symbolic.IntType), symbolic.NewIntConstant(2))
+
+	if sat, _ := isSat(t, zt, cond); !sat {
+		t.Fatal("expected a[0] == 2 to be possible")
+	}
+	if sat, _ := isSat(t, zt, cond, ne(a, b)); sat {
+		t.Error("a[0] == 2 must be impossible when a != b")
 	}
 }
 

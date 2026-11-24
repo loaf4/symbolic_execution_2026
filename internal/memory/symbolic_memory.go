@@ -13,9 +13,9 @@ type Memory interface {
 
 	GetFieldValue(ref *symbolic.Ref, fieldIdx int, tpe symbolic.ExpressionType) symbolic.SymbolicExpression
 
-	AssignToArray(ref *symbolic.Ref, index int, value symbolic.SymbolicExpression)
+	AssignToArray(ref *symbolic.Ref, index symbolic.SymbolicExpression, value symbolic.SymbolicExpression)
 
-	GetFromArray(ref *symbolic.Ref, index int, tpe symbolic.ExpressionType) symbolic.SymbolicExpression
+	GetFromArray(ref *symbolic.Ref, index symbolic.SymbolicExpression, tpe symbolic.ExpressionType) symbolic.SymbolicExpression
 }
 
 type SymbolicMemory struct {
@@ -46,20 +46,42 @@ func (mem *SymbolicMemory) GetFieldValue(ref *symbolic.Ref, fieldIdx int, tpe sy
 	return mem.read(name, ref, tpe)
 }
 
-func (mem *SymbolicMemory) AssignToArray(ref *symbolic.Ref, index int, value symbolic.SymbolicExpression) {
-	name := fmt.Sprintf("elem%d_%s", index, value.Type())
-	mem.write(name, ref, value)
+func (mem *SymbolicMemory) AssignToArray(ref *symbolic.Ref, index symbolic.SymbolicExpression, value symbolic.SymbolicExpression) {
+	name := fmt.Sprintf("arrays_%s", value.Type())
+	arrays := mem.getArrayOfArrays(name, value.Type())
+
+	// inner = arrays[addr]; inner[index] = value; arrays[addr] = inner
+	inner := symbolic.NewArraySelect(arrays, ref.Address)
+	newInner := symbolic.NewArrayStore(inner, index, value)
+	mem.arrays[name] = symbolic.NewArrayStore(arrays, ref.Address, newInner)
 }
 
-func (mem *SymbolicMemory) GetFromArray(ref *symbolic.Ref, index int, tpe symbolic.ExpressionType) symbolic.SymbolicExpression {
-	name := fmt.Sprintf("elem%d_%s", index, tpe)
-	return mem.read(name, ref, tpe)
+func (mem *SymbolicMemory) GetFromArray(ref *symbolic.Ref, index symbolic.SymbolicExpression, tpe symbolic.ExpressionType) symbolic.SymbolicExpression {
+	name := fmt.Sprintf("arrays_%s", tpe)
+	arrays := mem.getArrayOfArrays(name, tpe)
+
+	// arrays[addr][index]
+	inner := symbolic.NewArraySelect(arrays, ref.Address)
+	value := symbolic.NewArraySelect(inner, index)
+	if tpe == symbolic.RefType {
+		return symbolic.NewRef(value)
+	}
+	return value
 }
 
 func (mem *SymbolicMemory) getArray(name string, elemType symbolic.ExpressionType) symbolic.SymbolicExpression {
 	array, ok := mem.arrays[name]
 	if !ok {
 		array = symbolic.NewSymbolicArray(name, elemType)
+		mem.arrays[name] = array
+	}
+	return array
+}
+
+func (mem *SymbolicMemory) getArrayOfArrays(name string, elemType symbolic.ExpressionType) symbolic.SymbolicExpression {
+	array, ok := mem.arrays[name]
+	if !ok {
+		array = symbolic.NewArrayOfArrays(name, elemType)
 		mem.arrays[name] = array
 	}
 	return array

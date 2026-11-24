@@ -456,12 +456,17 @@ func (ref *Ref) Accept(visitor Visitor) interface{} {
 }
 
 type SymbolicArray struct {
-	Name     string
-	ElemType ExpressionType
+	Name          string
+	ElemType      ExpressionType
+	InnerElemType ExpressionType
 }
 
 func NewSymbolicArray(name string, elemType ExpressionType) *SymbolicArray {
 	return &SymbolicArray{Name: name, ElemType: elemType}
+}
+
+func NewArrayOfArrays(name string, innerElemType ExpressionType) *SymbolicArray {
+	return &SymbolicArray{Name: name, ElemType: ArrayType, InnerElemType: innerElemType}
 }
 
 func (sa *SymbolicArray) Type() ExpressionType {
@@ -540,8 +545,20 @@ func ElementType(array SymbolicExpression) ExpressionType {
 		return a.ElemType
 	case *ArrayStore:
 		return ElementType(a.Array)
+	case *ArraySelect:
+		return innerElementType(a.Array)
 	}
 	panic("element type: not an array expression")
+}
+
+func innerElementType(array SymbolicExpression) ExpressionType {
+	switch a := array.(type) {
+	case *SymbolicArray:
+		return a.InnerElemType
+	case *ArrayStore:
+		return innerElementType(a.Array)
+	}
+	panic("inner element type: not an array of arrays")
 }
 
 // TODO: Добавьте дополнительные типы выражений по необходимости:

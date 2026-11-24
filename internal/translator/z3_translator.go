@@ -268,19 +268,26 @@ func (zt *Z3Translator) VisitSymbolicArray(expr *symbolic.SymbolicArray) interfa
 	}
 
 	var elemSort z3.Sort
-	switch expr.ElemType {
-	case symbolic.IntType, symbolic.RefType:
-		elemSort = zt.ctx.IntSort()
-	case symbolic.BoolType:
-		elemSort = zt.ctx.BoolSort()
-	case symbolic.FloatType:
-		elemSort = zt.floatSort()
-	default:
-		panic(NewTranslationError(fmt.Sprintf("unsupported array element type %s", expr.ElemType), expr))
+	if expr.ElemType == symbolic.ArrayType {
+		elemSort = zt.ctx.ArraySort(zt.ctx.IntSort(), zt.elementSort(expr.InnerElemType, expr))
+	} else {
+		elemSort = zt.elementSort(expr.ElemType, expr)
 	}
 	v := zt.ctx.Const(expr.Name, zt.ctx.ArraySort(zt.ctx.IntSort(), elemSort))
 	zt.vars[expr.Name] = v
 	return v
+}
+
+func (zt *Z3Translator) elementSort(elemType symbolic.ExpressionType, expr symbolic.SymbolicExpression) z3.Sort {
+	switch elemType {
+	case symbolic.IntType, symbolic.RefType:
+		return zt.ctx.IntSort()
+	case symbolic.BoolType:
+		return zt.ctx.BoolSort()
+	case symbolic.FloatType:
+		return zt.floatSort()
+	}
+	panic(NewTranslationError(fmt.Sprintf("unsupported array element type %s", elemType), expr))
 }
 
 // VisitArrayStore транслирует запись в массив

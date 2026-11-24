@@ -11,11 +11,11 @@ func main() {
 	var mem = memory.NewSymbolicMemory()
 	var array = mem.Allocate(symbolic.ArrayType)
 
-	mem.AssignToArray(array, 5, symbolic.NewIntConstant(10))
+	mem.AssignToArray(array, symbolic.NewIntConstant(5), symbolic.NewIntConstant(10))
 
-	var fromArray = mem.GetFromArray(array, 5, symbolic.IntType)
+	var fromArray = mem.GetFromArray(array, symbolic.NewIntConstant(5), symbolic.IntType)
 	fmt.Println(fromArray)
 
-	var anotherFromArray = mem.GetFromArray(array, 10, symbolic.IntType)
+	var anotherFromArray = mem.GetFromArray(array, symbolic.NewIntConstant(10), symbolic.IntType)
 	fmt.Println(anotherFromArray)
 }
